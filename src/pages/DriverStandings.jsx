@@ -1,14 +1,33 @@
 import { useState, useEffect } from 'react';
-import api from '../api/axiosConfig';
+import api, { API_BASE_URL } from '../api/axiosConfig'; // API_BASE_URL import 확인 필요 (없으면 api에서만 가져와도 됨)
 import { Trophy, Flag, X, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+
+// 🔥 [추가] 팀 이름에서 로고 파일명을 찾는 함수
+const getTeamLogoSrc = (teamName) => {
+    if (!teamName) return null;
+    const name = teamName.toLowerCase();
+
+    if (name.includes('red bull')) return '/teams/redbull.png';
+    if (name.includes('mercedes')) return '/teams/mercedes.png';
+    if (name.includes('ferrari')) return '/teams/ferrari.png';
+    if (name.includes('mclaren')) return '/teams/mclaren.png';
+    if (name.includes('aston')) return '/teams/aston.png';
+    if (name.includes('alpine')) return '/teams/alpine.png';
+    if (name.includes('williams')) return '/teams/williams.png';
+    if (name.includes('rb') || name.includes('alphatauri')) return '/teams/rb.png';
+    if (name.includes('sauber') || name.includes('kick')) return '/teams/sauber.png';
+    if (name.includes('haas')) return '/teams/haas.png';
+
+    return null;
+};
 
 export default function DriverStandings() {
     const [year, setYear] = useState(2024);
     const [drivers, setDrivers] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    // 🔥 [추가] 이미지 확대 모달 상태
-    const [selectedImage, setSelectedImage] = useState(null); // { src: string, name: string }
+    // 이미지 확대 모달 상태
+    const [selectedImage, setSelectedImage] = useState(null);
     const [isZoomed, setIsZoomed] = useState(false);
 
     // 드라이버 데이터 가져오기
@@ -59,14 +78,14 @@ export default function DriverStandings() {
         return '#9CA3AF';
     };
 
-    // 🔥 [추가] 모달 열기 핸들러
+    // 모달 열기 핸들러
     const openModal = (src, name) => {
         setSelectedImage({ src, name });
         setIsZoomed(false); // 줌 초기화
         document.body.style.overflow = 'hidden'; // 배경 스크롤 막기
     };
 
-    // 🔥 [추가] 모달 닫기 핸들러
+    // 모달 닫기 핸들러
     const closeModal = () => {
         setSelectedImage(null);
         setIsZoomed(false);
@@ -114,6 +133,7 @@ export default function DriverStandings() {
                             const teamColor = getTeamColor(driver.team);
                             const imgSrc = getDriverImageSrc(driver.driverId);
                             const driverName = `${driver.firstName} ${driver.lastName}`;
+                            const teamLogo = getTeamLogoSrc(driver.team); // 팀 로고 경로
 
                             return (
                                 <div
@@ -137,9 +157,8 @@ export default function DriverStandings() {
                                             {driver.position}
                                         </div>
 
-                                        {/* 📸 드라이버 사진 (클릭 이벤트 추가) */}
+                                        {/* 📸 드라이버 사진 */}
                                         <div
-                                            // 🔥 [추가] 클릭 시 모달 열기 + 커서 변경
                                             onClick={() => openModal(imgSrc, driverName)}
                                             className="relative w-48 h-48 rounded-full overflow-hidden border-[6px] shadow-2xl z-10 bg-[#333333] cursor-zoom-in group-hover:ring-4 ring-white/10 transition-all"
                                             style={{
@@ -154,7 +173,6 @@ export default function DriverStandings() {
                                                 }}
                                                 className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-110"
                                             />
-                                            {/* 호버 시 확대 아이콘 힌트 */}
                                             <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
                                                 <Maximize2 className="text-white drop-shadow-md" size={32} />
                                             </div>
@@ -175,6 +193,7 @@ export default function DriverStandings() {
                                                 <span className="text-gray-500">|</span>
                                                 <span className="font-mono text-gray-400">#{driver.driverNumber}</span>
                                             </div>
+
                                             <div className="leading-tight">
                                                 <span className="block text-lg font-bold text-gray-200">
                                                     {driver.firstName}
@@ -189,9 +208,10 @@ export default function DriverStandings() {
                                             </div>
                                         </div>
 
+                                        {/* 🔥 [수정] 팀 이름 + 로고 */}
                                         <div className="text-center mb-8">
                                             <span
-                                                className="inline-block px-6 py-2 rounded-full text-sm font-bold uppercase tracking-widest shadow-lg transform transition-transform group-hover:scale-105"
+                                                className="inline-flex items-center gap-2 pl-2 pr-4 py-1.5 rounded-full text-sm font-bold uppercase tracking-widest shadow-lg transform transition-transform group-hover:scale-105"
                                                 style={{
                                                     backgroundColor: teamColor,
                                                     color: '#ffffff',
@@ -199,7 +219,19 @@ export default function DriverStandings() {
                                                     boxShadow: `0 4px 15px ${teamColor}55`,
                                                 }}
                                             >
-                                                {driver.team}
+                                                {/* 로고가 있으면 흰색 원형 배경에 넣어서 표시 */}
+                                                {teamLogo && (
+                                                    <span className="w-6 h-6  rounded-full flex items-center justify-center">
+                                                        <img
+                                                            src={teamLogo}
+                                                            alt={driver.team}
+                                                            className="w-6 h-6 object-contain"
+                                                        />
+                                                    </span>
+                                                )}
+
+                                                {/* 로고 없으면 패딩 조절을 위해 span만 */}
+                                                <span className={!teamLogo ? 'px-2' : ''}>{driver.team}</span>
                                             </span>
                                         </div>
 
@@ -245,13 +277,12 @@ export default function DriverStandings() {
                 </div>
             )}
 
-            {/* 🔥 [추가] 이미지 확대 모달 */}
+            {/* 이미지 확대 모달 */}
             {selectedImage && (
                 <div
                     className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-200"
-                    onClick={closeModal} // 배경 클릭 시 닫기
+                    onClick={closeModal}
                 >
-                    {/* 닫기 버튼 */}
                     <button
                         onClick={closeModal}
                         className="absolute top-6 right-6 text-gray-400 hover:text-white transition-colors bg-white/10 p-2 rounded-full"
@@ -259,12 +290,10 @@ export default function DriverStandings() {
                         <X size={32} />
                     </button>
 
-                    {/* 이미지 컨테이너 */}
                     <div
                         className="relative max-w-4xl max-h-[80vh] flex flex-col items-center"
-                        onClick={(e) => e.stopPropagation()} // 내부 클릭 시 닫기 방지
+                        onClick={(e) => e.stopPropagation()}
                     >
-                        {/* 이미지 */}
                         <img
                             src={selectedImage.src}
                             alt={selectedImage.name}
@@ -272,10 +301,9 @@ export default function DriverStandings() {
                                 isZoomed ? 'scale-[2.0] cursor-zoom-out' : 'scale-100'
                             }`}
                             style={{ maxHeight: '70vh' }}
-                            onClick={() => setIsZoomed(!isZoomed)} // 이미지 클릭 시 확대/축소 토글
+                            onClick={() => setIsZoomed(!isZoomed)}
                         />
 
-                        {/* 하단 캡션 */}
                         <div
                             className={`mt-6 text-center transition-opacity duration-300 ${isZoomed ? 'opacity-0' : 'opacity-100'}`}
                         >
