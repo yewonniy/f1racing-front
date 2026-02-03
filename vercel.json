@@ -1,0 +1,12 @@
+{
+    "rewrites": [
+        {
+            "source": "/api/:path*",
+            "destination": "http://34.221.206.128:8080/api/:path*"
+        },
+        {
+            "source": "/ws-f1/:path*",
+            "destination": "http://34.221.206.128:8080/ws-f1/:path*"
+        }
+    ]
+}
