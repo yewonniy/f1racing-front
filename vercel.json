@@ -5,6 +5,10 @@
             "destination": "http://34.221.206.128:8080/api/:path*"
         },
         {
+            "source": "/race/:path*",
+            "destination": "http://34.221.206.128:8080/race/:path*"
+        },
+        {
             "source": "/ws-f1/:path*",
             "destination": "http://34.221.206.128:8080/ws-f1/:path*"
         }

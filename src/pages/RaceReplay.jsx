@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import api, { API_BASE_URL } from '../api/axiosConfig';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { Play, Pause, Loader2, Gauge, Wifi, WifiOff, Flag, Timer } from 'lucide-react';
+import { Play, Pause, Loader2, Rewind, FastForward, Gauge, Wifi, WifiOff, Flag, Timer } from 'lucide-react';
 
 // 드라이버 이니셜 매핑
 const DRIVER_INITIALS = {
@@ -26,13 +26,14 @@ const DRIVER_INITIALS = {
     22: 'TSU',
     3: 'RIC',
     30: 'LAW',
-    7: 'HAD',
-    77: 'BOT',
+    7: 'DOO',
     24: 'ZHO',
     27: 'HUL',
     87: 'BEA',
     20: 'MAG',
     5: 'BOR',
+    6: 'HAD',
+    77: 'BOT',
 };
 
 const ROSTER_2024 = {
@@ -57,35 +58,35 @@ const ROSTER_2024 = {
     77: 'Kick Sauber',
     24: 'Kick Sauber',
     27: 'Haas',
-    20: 'Haas',
-    87: 'Haas', // Bearman (Reserve)
+    20: 'Haas', // 2024
+    87: 'Haas', // 베어만
 };
 
-// 2025년 시즌 로스터 (이적 시장 반영)
 const ROSTER_2025 = {
     1: 'Red Bull Racing',
-    22: 'Red Bull Racing', // (Perez 잔류 가정)
+    22: 'Red Bull Racing',
     63: 'Mercedes',
-    12: 'Mercedes', // Russell, Antonelli
+    12: 'Mercedes',
     16: 'Ferrari',
-    44: 'Ferrari', // Leclerc, Hamilton
+    44: 'Ferrari',
     4: 'McLaren',
     81: 'McLaren',
     14: 'Aston Martin',
     18: 'Aston Martin',
     10: 'Alpine',
-    61: 'Alpine', // Gasly, Doohan
+    61: 'Alpine',
+    43: 'Alpine',
     23: 'Williams',
-    55: 'Williams', // Albon, Sainz
+    55: 'Williams',
     30: 'RB',
-    7: 'RB', // Tsunoda, Lawson/Hadjar (예상)
+    7: 'Alpine', // 두한
+    6: 'RB',
     5: 'Sauber',
-    27: 'Sauber', // (Hulkenberg -> Sauber?)
-    31: 'Haas',
-    87: 'Haas', // Ocon, Bearman
+    27: 'Sauber',
+    31: 'Haas', // 오콘
+    87: 'Haas',
 };
 
-// [복구됨] 정렬 순서 키워드
 const TEAM_PRIORITY_KEYWORDS = [
     'Red Bull',
     'Mercedes',
@@ -98,6 +99,25 @@ const TEAM_PRIORITY_KEYWORDS = [
     'Sauber',
     'Haas',
 ];
+
+// 팀 이름에서 로고 파일명을 찾는 함수
+const getTeamLogoSrc = (teamName) => {
+    if (!teamName) return null;
+    const name = teamName.toLowerCase();
+
+    if (name.includes('red bull')) return '/teams/redbull.png';
+    if (name.includes('mercedes')) return '/teams/mercedes.png';
+    if (name.includes('ferrari')) return '/teams/ferrari.png';
+    if (name.includes('mclaren')) return '/teams/mclaren.png';
+    if (name.includes('aston')) return '/teams/aston.png';
+    if (name.includes('alpine')) return '/teams/alpine.png';
+    if (name.includes('williams')) return '/teams/williams.png';
+    if (name.includes('rb') || name.includes('alphatauri')) return '/teams/rb.png';
+    if (name.includes('sauber') || name.includes('kick')) return '/teams/sauber.png';
+    if (name.includes('haas')) return '/teams/haas.png';
+
+    return null; // 매칭되는 로고 없으면 null
+};
 
 export default function RaceReplay() {
     const [year, setYear] = useState(2024);
@@ -114,53 +134,55 @@ export default function RaceReplay() {
     const [raceData, setRaceData] = useState({});
     const [isLoadingMap, setIsLoadingMap] = useState(false);
 
-    // 랩 정보 관련 State
     const [lapList, setLapList] = useState([]);
     const [currentLapInfo, setCurrentLapInfo] = useState(null);
 
-    // 연결 상태 모니터링
     const [isConnected, setIsConnected] = useState(false);
     const [lastDataTime, setLastDataTime] = useState(null);
 
     const clientId = useRef(`client-${Math.floor(Math.random() * 100000)}`);
     const stompClient = useRef(null);
 
-    // 드라이버 별 팀 정보 저장용 State (Map)
     const [driverTeamMap, setDriverTeamMap] = useState({});
 
-    // 1. 초기 로드 (세션 목록 & 드라이버 팀 정보)
+    // ⏪ 5초 뒤로 가기 (로직 수정됨: ms -> min 변환)
+    const handleRewind = () => {
+        const newTime = currentTime - 5000;
+        setCurrentTime(newTime);
+        const newSliderVal = Math.floor((newTime - realStartTime) / 60000);
+        setSliderUiValue(newSliderVal);
+    };
+
+    // ⏩ 5초 앞으로 가기 (로직 수정됨: ms -> min 변환)
+    const handleForward = () => {
+        const newTime = currentTime + 5000;
+        setCurrentTime(newTime);
+        const newSliderVal = Math.floor((newTime - realStartTime) / 60000);
+        setSliderUiValue(newSliderVal);
+    };
+
+    // 1. 초기 로드
     useEffect(() => {
-        // (1) 세션 목록
         api.get(`/api/race/sessions?year=${year}`).then((res) => {
-            // res.data가 배열인지 확인 후 정렬
             const sessionList = Array.isArray(res.data) ? res.data : [];
             const sorted = sessionList.sort((a, b) => new Date(a.dateStart) - new Date(b.dateStart));
             setSessions(sorted);
         });
 
-        // (2) 드라이버 정보 (팀 매핑용) - [에러 수정된 부분]
         api.get(`/api/drivers`, { params: { year } })
             .then((res) => {
-                console.log('🔥 드라이버 API 원본 응답:', res.data); // 구조 확인용 로그
-
-                // 데이터가 배열이 아니라면(Page 객체 등), 내부의 content를 찾거나 빈 배열 처리
                 let driverList = [];
                 if (Array.isArray(res.data)) {
                     driverList = res.data;
                 } else if (res.data && Array.isArray(res.data.content)) {
-                    // Spring Data JPA의 Page 객체인 경우
                     driverList = res.data.content;
-                } else {
-                    console.warn('드라이버 데이터가 배열이 아닙니다. 구조를 확인하세요.');
                 }
-
                 const map = {};
                 driverList.forEach((driver) => {
                     if (driver.driverNumber && driver.team) {
                         map[driver.driverNumber] = driver.team;
                     }
                 });
-                console.log(`${year}년 드라이버 팀 정보 로드 완료:`, map);
                 setDriverTeamMap(map);
             })
             .catch((err) => console.error('드라이버 정보 로드 실패:', err));
@@ -178,28 +200,21 @@ export default function RaceReplay() {
         setCurrentLapInfo(null);
 
         try {
-            // (1) Start Time
             const timeRes = await api.get('/race/startTime', { params: { year, sessionKey: session.sessionKey } });
             let timeString = timeRes.data;
-            if (typeof timeString === 'string' && !timeString.endsWith('Z')) {
-                timeString += 'Z';
-            }
+            if (typeof timeString === 'string' && !timeString.endsWith('Z')) timeString += 'Z';
             const startMs = new Date(timeString).getTime();
             setRealStartTime(startMs);
             setCurrentTime(startMs);
 
-            // (2) Lap Info
             const lapRes = await api.get('/race/lapInfo', { params: { year, sessionKey: session.sessionKey } });
             const formattedLaps = lapRes.data.map((lap) => {
                 let ds = lap.dateStart;
-                if (typeof ds === 'string' && !ds.endsWith('Z')) {
-                    ds += 'Z';
-                }
+                if (typeof ds === 'string' && !ds.endsWith('Z')) ds += 'Z';
                 return { ...lap, dateStart: ds };
             });
             setLapList(formattedLaps.sort((a, b) => a.lapNumber - b.lapNumber));
 
-            // (3) Track Map
             const trackRes = await api.get('/api/race/track-map', { params: { year, sessionKey: session.sessionKey } });
             setTrackPaths(trackRes.data);
 
@@ -242,14 +257,7 @@ export default function RaceReplay() {
                 const subPath = `/topic/race/${sessionKey}/${clientId.current}`;
                 client.subscribe(subPath, (message) => {
                     const dataList = JSON.parse(message.body);
-                    console.log(`📦 [WS] 파싱된 데이터 개수: ${dataList.length}개`);
                     if (dataList.length > 0) {
-                        // [로그 추가됨] 시간 오차 디버깅용
-                        const serverTs = dataList[0].timestamp;
-                        console.log(
-                            `📡 [WS] Server: ${serverTs} | ⏱️ [Front] Current: ${new Date(currentTime).toISOString()}`,
-                        );
-
                         setLastDataTime(new Date());
                         setRaceData((prev) => {
                             const next = { ...prev };
@@ -279,15 +287,6 @@ export default function RaceReplay() {
                 clientId: clientId.current,
             }),
         });
-    };
-
-    const getTeamRank = (teamName) => {
-        if (!teamName) return 999;
-        // [복구됨] TEAM_PRIORITY_KEYWORDS 참조
-        const index = TEAM_PRIORITY_KEYWORDS.findIndex((keyword) =>
-            teamName.toLowerCase().includes(keyword.toLowerCase()),
-        );
-        return index === -1 ? 999 : index;
     };
 
     // 5. 타이머
@@ -360,11 +359,33 @@ export default function RaceReplay() {
     }, [trackPaths]);
 
     const getDriverLabel = (num) => DRIVER_INITIALS[num] || num;
+    const getTeamColor = (number, year) => {
+        const num = parseInt(number);
+        if (num === 1 || (year == 2024 && num === 11) || (year == 2025 && num === 22)) return '#3671C6';
+        if (num === 16 || (year === 2024 && num === 55) || (year === 2025 && num === 44)) return '#E8002D';
+        if (num === 4 || num === 81) return '#FF8000';
+        if (num === 63 || (year === 2024 && num === 44) || (year === 2025 && num === 12)) return '#27F4D2';
+        if (num === 14 || num === 18) return '#229971';
+        if (num === 23 || num === 2 || (year === 2024 && num === 43) || (year === 2025 && num === 55)) return '#64C4FF'; // 윌리엄스 (알본, 사전트, 24 콜라핀토, 25 사인츠)
+        if (
+            (year == 2025 && num === 7) ||
+            (year === 2025 && num === 43) ||
+            num === 10 ||
+            (year === 2024 && num === 31) ||
+            (year == 2025 && num === 7)
+        )
+            return '#FF87BC'; // 알핀 (두한, 콜라핀토, 가슬리, 오콘, 두한)
+        if ((year == 2024 && num === 3) || (year == 2025 && num === 6) || (year === 2024 && num === 22) || num === 30)
+            return '#B6BABD'; // RB 리카도, 하자르, 유키, 로슨
+        if (num === 24 || (year === 2025 && num === 27) || num === 5 || (year == 2024 && num === 77)) return '#52E252'; // 자우버 (저우, 니코, 보톨레토, 보타스)
+        return '#666666';
+    };
 
     return (
         <div className="min-h-screen bg-[#0f0f0f] text-white p-4 lg:p-8 flex flex-col gap-6 relative">
-            {/* 상단 컨트롤 */}
+            {/* 상단 컨트롤 패널 */}
             <div className="bg-[#151515] border border-white/10 p-6 rounded-3xl shadow-2xl flex flex-col xl:flex-row gap-6 items-center justify-between backdrop-blur-md">
+                {/* 1. 세션 선택 영역 */}
                 <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
                     <select
                         value={year}
@@ -391,8 +412,10 @@ export default function RaceReplay() {
                     </select>
                 </div>
 
+                {/* 2. 우측 컨트롤 및 정보 영역 */}
                 {selectedSession && (
                     <div className="flex flex-col xl:flex-row gap-6 w-full xl:justify-end">
+                        {/* 2-1. 랩 정보 (조건부 렌더링) */}
                         {currentLapInfo ? (
                             <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-2xl border border-white/10">
                                 <div className="flex flex-col items-center px-2 border-r border-white/10">
@@ -405,19 +428,20 @@ export default function RaceReplay() {
                                 </div>
                                 <div className="flex flex-col px-2">
                                     <div className="flex items-center gap-1 text-gray-400 text-xs font-bold mb-1">
-                                        <Timer size={12} /> FASTEST Driver 기록
+                                        <Timer size={12} /> FASTEST
                                     </div>
                                     <div className="flex items-baseline gap-2">
-                                        <span className="text-lg font-bold text-yellow-400">
+                                        <span className="text-xl font-bold text-yellow-400">
                                             {getDriverLabel(currentLapInfo.driverName)}
                                         </span>
                                         <span className="text-sm font-mono text-gray-300">
-                                            {currentLapInfo.lapDuration}s
+                                            기록: {currentLapInfo.lapDuration || '0'}s
                                         </span>
                                     </div>
                                 </div>
                             </div>
                         ) : (
+                            /* 레이스 시작 전 카운트다운 */
                             lapList.length > 0 &&
                             currentTime < new Date(lapList[0].dateStart).getTime() && (
                                 <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-2xl border border-white/10">
@@ -425,11 +449,11 @@ export default function RaceReplay() {
                                         <div className="flex items-center gap-1 text-blue-400 text-xs font-bold mb-1 animate-pulse">
                                             BEFORE RACE START
                                         </div>
-                                        <span className="text-2xl font-mono font-bold text-white tabular-nums">
-                                            레이스 시작{' '}
+                                        <span className="text-xl font-mono font-bold text-white tabular-nums">
+                                            레이스 시작ㅤ
                                             {Math.ceil(
                                                 (new Date(lapList[0].dateStart).getTime() - currentTime) / 1000,
-                                            ) - 60}{' '}
+                                            ) - 60}
                                             초 전
                                         </span>
                                     </div>
@@ -437,18 +461,55 @@ export default function RaceReplay() {
                             )
                         )}
 
-                        <div className="flex items-center gap-6 flex-1 xl:flex-none bg-white/5 p-4 rounded-2xl">
-                            <button
-                                onClick={() => setIsPlaying(!isPlaying)}
-                                className={`p-4 rounded-full shadow-lg ${isPlaying ? 'bg-yellow-400 text-black' : 'bg-red-600 text-white'}`}
-                            >
-                                {isPlaying ? (
-                                    <Pause size={24} fill="currentColor" />
-                                ) : (
-                                    <Play size={24} fill="currentColor" />
-                                )}
-                            </button>
-                            <div className="flex-1 w-full flex flex-col gap-2 min-w-[200px]">
+                        {/* 2-2. 플레이어 컨트롤러 (항상 표시) */}
+                        {/* 🔥 [수정] flex-col(모바일 세로) -> sm:flex-row(PC 가로) */}
+                        <div className="flex flex-col sm:flex-row items-center gap-4 flex-1 xl:flex-none bg-white/5 p-4 rounded-2xl w-full">
+                            {/* 버튼 그룹 (뒤로 - 재생 - 앞으로) */}
+                            {/* 🔥 [수정] 모바일에서 버튼들이 가운데 정렬되도록 justify-center 추가 */}
+                            <div className="flex items-center justify-center gap-3 w-full sm:w-auto">
+                                {/* ⏪ 5초 뒤로 */}
+                                <div className="flex flex-col items-center gap-0">
+                                    <button
+                                        onClick={handleRewind}
+                                        className="p-3 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-all active:scale-95"
+                                        title="-5s"
+                                    >
+                                        <Rewind size={20} fill="currentColor" />
+                                    </button>
+                                    <span className="text-[12px] font-mono text-gray-500 font-bold">-5s</span>
+                                </div>
+
+                                <button
+                                    onClick={() => setIsPlaying(!isPlaying)}
+                                    className={`p-4 mb-4 rounded-full shadow-lg transition-transform active:scale-95 ${
+                                        isPlaying
+                                            ? 'bg-yellow-400 text-black shadow-yellow-400/20'
+                                            : 'bg-red-600 text-white shadow-red-600/30'
+                                    }`}
+                                >
+                                    {isPlaying ? (
+                                        <Pause size={24} fill="currentColor" />
+                                    ) : (
+                                        <Play size={24} fill="currentColor" />
+                                    )}
+                                </button>
+
+                                {/* ⏩ 5초 앞으로 */}
+                                <div className="flex flex-col items-center gap-1">
+                                    <button
+                                        onClick={handleForward}
+                                        className="p-3 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-all active:scale-95"
+                                        title="+5s"
+                                    >
+                                        <FastForward size={20} fill="currentColor" />
+                                    </button>
+                                    <span className="text-[12px] font-mono text-gray-500 font-bold">+5s</span>
+                                </div>
+                            </div>
+
+                            {/* 슬라이더 */}
+                            {/* 🔥 [수정] w-full로 모바일에서 꽉 차게 설정 */}
+                            <div className="flex-1 w-full flex flex-col gap-2 min-w-[150px]">
                                 <input
                                     type="range"
                                     min="0"
@@ -465,13 +526,15 @@ export default function RaceReplay() {
                                     <span>+120 MIN</span>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-4 bg-black/60 px-5 py-3 rounded-xl border border-white/10 min-w-[140px] justify-center">
+
+                            {/* 시간 표시 (PC에서만 보임 - 기존 유지) */}
+                            <div className="flex items-center gap-3 bg-black/60 px-4 py-2 rounded-xl border border-white/10 min-w-[120px] justify-center hidden sm:flex">
                                 {isConnected ? (
-                                    <Wifi size={18} className="text-green-500" />
+                                    <Wifi size={16} className="text-green-500" />
                                 ) : (
-                                    <WifiOff size={18} className="text-red-500 animate-pulse" />
+                                    <WifiOff size={16} className="text-red-500 animate-pulse" />
                                 )}
-                                <span className="font-mono text-xl font-bold text-white tabular-nums">
+                                <span className="font-mono text-lg font-bold text-white tabular-nums">
                                     {new Date(currentTime).toLocaleTimeString('en-GB', {
                                         hour12: false,
                                         timeZone: 'UTC',
@@ -483,7 +546,9 @@ export default function RaceReplay() {
                 )}
             </div>
 
+            {/* 하단 메인 영역 (트랙 맵 & 리더보드) */}
             <div className="flex-1 flex flex-col lg:flex-row gap-6">
+                {/* 좌측 트랙 맵 */}
                 <div className="flex-[3] h-[600px] bg-[#151515] border border-white/10 rounded-3xl relative overflow-hidden group shadow-inner">
                     {!selectedSession ? (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-700">
@@ -535,15 +600,15 @@ export default function RaceReplay() {
                     )}
                 </div>
 
-                {/* [복구됨] 리더보드 Wrapper & Header */}
+                {/* 우측 리더보드 */}
                 <div className="lg:w-[400px] h-[600px] bg-[#151515] border border-white/10 rounded-3xl flex flex-col overflow-hidden">
                     <div className="p-5 bg-red-700 shadow-lg relative z-10 flex justify-between items-center">
-                        <span className="font-black text-white uppercase tracking-widest text-sm">Live Timing</span>
+                        <span className="font-black text-white uppercase tracking-widest text-sm">Driving SPEED</span>
                         <div className="flex items-center gap-2">
                             <div
                                 className={`w-2 h-2 rounded-full ${lastDataTime && new Date() - lastDataTime < 2000 ? 'bg-green-400 animate-pulse' : 'bg-gray-600'}`}
                             ></div>
-                            <span className="text-[10px] text-red-100 font-bold">POS ORDER</span>
+                            <span className="text-[10px] text-red-100 font-bold">LIVE</span>
                         </div>
                     </div>
 
@@ -578,17 +643,32 @@ export default function RaceReplay() {
                                         className="bg-white/5 p-3 rounded-xl flex items-center justify-between border border-white/5 transition-colors hover:bg-white/10"
                                     >
                                         <div className="flex items-center gap-4">
+                                            {/* 1. 순위 */}
                                             <span
                                                 className={`font-mono font-bold text-sm w-6 text-right ${car.position && car.position <= 3 ? 'text-yellow-400' : 'text-gray-500'}`}
                                             >
                                                 {car.position && car.position > 0 ? car.position : '-'}
                                             </span>
+
+                                            {/* 2. 🔥 [수정] 팀 로고 표시 영역 */}
                                             <div
-                                                className="w-10 h-8 rounded flex items-center justify-center font-bold text-xs text-white shadow-sm"
+                                                className="w-10 h-8 rounded flex items-center justify-center shadow-sm overflow-hidden relative"
                                                 style={{ backgroundColor: getTeamColor(car.driverNumber, year) }}
                                             >
-                                                {getDriverLabel(car.driverNumber)}
+                                                {getTeamLogoSrc(teamName) ? (
+                                                    <img
+                                                        src={getTeamLogoSrc(teamName)}
+                                                        alt={teamName}
+                                                        className="w-full h-full object-contain p-1"
+                                                    />
+                                                ) : (
+                                                    <span className="font-bold text-xs text-white">
+                                                        {getDriverLabel(car.driverNumber)}
+                                                    </span>
+                                                )}
                                             </div>
+
+                                            {/* 3. 드라이버 이름 및 팀명 */}
                                             <div>
                                                 <div className="font-bold text-sm text-gray-200">
                                                     {getDriverLabel(car.driverNumber)}{' '}
@@ -622,18 +702,4 @@ export default function RaceReplay() {
             </div>
         </div>
     );
-}
-
-function getTeamColor(number, year) {
-    const num = parseInt(number);
-    if (num === 1 || (year == 2024) & (num === 11) || (year == 2025) & (num === 22)) return '#3671C6';
-    if (num === 16 || (year === 2024) & (num === 55) || (year === 2025) & (num === 44)) return '#E8002D';
-    if (num === 4 || num === 81) return '#FF8000';
-    if (num === 63 || (year === 2024) & (num === 44) || (year === 2025) & (num === 12)) return '#27F4D2';
-    if (num === 14 || num === 18) return '#229971';
-    if (num === 23 || num === 2 || num === 43 || (year === 2025) & (num === 55)) return '#64C4FF';
-    if (num === 10 || num === 31 || num === 61) return '#FF87BC';
-    if (num === 3 || num === 22 || num === 30) return '#52E252';
-    if (num === 20 || num === 27 || num === 87) return '#B6BABD';
-    return '#666666';
 }
