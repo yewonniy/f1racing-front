@@ -381,12 +381,18 @@ export default function RaceReplay() {
         return '#666666';
     };
 
+    const getCountDown = () => {
+        if (lapList.length === 0) return 0;
+        const start = new Date(lapList[0].dateStart).getTime();
+        return Math.ceil((start - currentTime) / 1000 - 60);
+    };
+
     return (
         <div className="min-h-screen bg-[#0f0f0f] text-white p-4 lg:p-8 flex flex-col gap-6 relative">
             {/* 상단 컨트롤 패널 */}
-            <div className="bg-[#151515] border border-white/10 p-6 rounded-3xl shadow-2xl flex flex-col xl:flex-row gap-6 items-center justify-between backdrop-blur-md">
-                {/* 1. 세션 선택 영역 */}
-                <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
+            <div className="bg-[#151515] border border-white/10 p-6 rounded-3xl shadow-2xl flex flex-col gap-6 backdrop-blur-md">
+                {/* [1줄] 세션 선택 영역 */}
+                <div className="flex flex-col sm:flex-row gap-3 w-full">
                     <select
                         value={year}
                         onChange={(e) => setYear(Number(e.target.value))}
@@ -396,7 +402,7 @@ export default function RaceReplay() {
                         <option value={2025}>2025</option>
                     </select>
                     <select
-                        className="bg-black/40 text-white py-3 px-6 rounded-full border border-white/10 flex-1 xl:min-w-[300px]"
+                        className="bg-black/40 text-white py-3 px-6 rounded-full border border-white/10 flex-1"
                         onChange={(e) => {
                             const s = sessions.find((item) => item.sessionKey === Number(e.target.value));
                             if (s) handleSessionSelect(s);
@@ -412,61 +418,59 @@ export default function RaceReplay() {
                     </select>
                 </div>
 
-                {/* 2. 우측 컨트롤 및 정보 영역 */}
+                {/* 세션이 선택되었을 때만 2, 3줄 표시 */}
                 {selectedSession && (
-                    <div className="flex flex-col xl:flex-row gap-6 w-full xl:justify-end">
-                        {/* 2-1. 랩 정보 (조건부 렌더링) */}
-                        {currentLapInfo ? (
-                            <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-2xl border border-white/10">
-                                <div className="flex flex-col items-center px-2 border-r border-white/10">
-                                    <div className="flex items-center gap-1 text-gray-400 text-xs font-bold mb-1">
-                                        <Flag size={12} /> LAP
-                                    </div>
-                                    <span className="text-2xl font-bold text-red-500 tabular-nums">
-                                        {currentLapInfo.lapNumber}
-                                    </span>
-                                </div>
-                                <div className="flex flex-col px-2">
-                                    <div className="flex items-center gap-1 text-gray-400 text-xs font-bold mb-1">
-                                        <Timer size={12} /> FASTEST
-                                    </div>
-                                    <div className="flex items-baseline gap-2">
-                                        <span className="text-xl font-bold text-yellow-400">
-                                            {getDriverLabel(currentLapInfo.driverName)}
-                                        </span>
-                                        <span className="text-sm font-mono text-gray-300">
-                                            기록: {currentLapInfo.lapDuration || '0'}s
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            /* 레이스 시작 전 카운트다운 */
-                            lapList.length > 0 &&
-                            currentTime < new Date(lapList[0].dateStart).getTime() && (
-                                <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-2xl border border-white/10">
-                                    <div className="flex flex-col items-center px-4">
-                                        <div className="flex items-center gap-1 text-blue-400 text-xs font-bold mb-1 animate-pulse">
-                                            BEFORE RACE START
+                    <>
+                        {/* [2줄] 랩 정보 or 카운트다운 */}
+                        <div className="w-full flex flex-col justify-center md:justify-start">
+                            {currentLapInfo ? (
+                                <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-2xl border border-white/10 w-full md:w-auto justify-center min-h-[74px]">
+                                    <div className="flex flex-col items-center px-2 border-r border-white/10">
+                                        <div className="flex items-center gap-1 text-gray-400 text-xs font-bold mb-1">
+                                            <Flag size={12} /> LAP
                                         </div>
-                                        <span className="text-xl font-mono font-bold text-white tabular-nums">
-                                            레이스 시작ㅤ
-                                            {Math.ceil(
-                                                (new Date(lapList[0].dateStart).getTime() - currentTime) / 1000,
-                                            ) - 60}
-                                            초 전
+                                        <span className="text-2xl font-bold text-red-500 tabular-nums">
+                                            {currentLapInfo.lapNumber}
                                         </span>
                                     </div>
+                                    <div className="flex flex-col px-2">
+                                        <div className="flex items-center gap-1 text-gray-400 text-xs font-bold mb-1">
+                                            <Timer size={12} /> FASTEST
+                                        </div>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-xl font-bold text-yellow-400">
+                                                {getDriverLabel(currentLapInfo.driverName)}
+                                            </span>
+                                            <span className="text-sm font-mono text-gray-300">
+                                                기록: {currentLapInfo.lapDuration || '0'}s
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
-                            )
-                        )}
+                            ) : (
+                                /* 레이스 시작 전 카운트다운 */
+                                lapList.length > 0 &&
+                                currentTime < new Date(lapList[0].dateStart).getTime() + 5000 && (
+                                    <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-2xl border border-white/10 w-full md:w-auto justify-center min-h-[74px]">
+                                        <div className="flex flex-col items-center px-4 w-[160px]">
+                                            <div className="flex items-center gap-1 text-blue-400 text-xs font-bold mb-1 animate-pulse">
+                                                {getCountDown() > 0 ? '레이스 시작' : 'RACE STARTED'}
+                                            </div>
+                                            <span
+                                                className={`text-2xl font-mono font-bold tabular-nums ${getCountDown() > 0 ? 'text-white' : 'text-green-500'}`}
+                                            >
+                                                {getCountDown() > 0 ? `${getCountDown()}초 전` : 'LIGHTS OUT'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )
+                            )}
+                        </div>
 
-                        {/* 2-2. 플레이어 컨트롤러 (항상 표시) */}
-                        {/* 🔥 [수정] flex-col(모바일 세로) -> sm:flex-row(PC 가로) */}
-                        <div className="flex flex-col sm:flex-row items-center gap-4 flex-1 xl:flex-none bg-white/5 p-4 rounded-2xl w-full">
-                            {/* 버튼 그룹 (뒤로 - 재생 - 앞으로) */}
-                            {/* 🔥 [수정] 모바일에서 버튼들이 가운데 정렬되도록 justify-center 추가 */}
-                            <div className="flex items-center justify-center gap-3 w-full sm:w-auto">
+                        {/* [3줄] 플레이어 컨트롤러 */}
+                        <div className="flex flex-col md:flex-row items-center gap-6 bg-white/5 p-4 rounded-2xl border border-white/5 w-full">
+                            {/* 버튼 그룹 */}
+                            <div className="flex items-center justify-center gap-3 w-full md:w-auto">
                                 {/* ⏪ 5초 뒤로 */}
                                 <div className="flex flex-col items-center gap-0">
                                     <button
@@ -479,9 +483,10 @@ export default function RaceReplay() {
                                     <span className="text-[12px] font-mono text-gray-500 font-bold">-5s</span>
                                 </div>
 
+                                {/* 재생 버튼 */}
                                 <button
                                     onClick={() => setIsPlaying(!isPlaying)}
-                                    className={`p-4 mb-4 rounded-full shadow-lg transition-transform active:scale-95 ${
+                                    className={`p-4 rounded-full shadow-lg transition-transform active:scale-95 ${
                                         isPlaying
                                             ? 'bg-yellow-400 text-black shadow-yellow-400/20'
                                             : 'bg-red-600 text-white shadow-red-600/30'
@@ -495,7 +500,7 @@ export default function RaceReplay() {
                                 </button>
 
                                 {/* ⏩ 5초 앞으로 */}
-                                <div className="flex flex-col items-center gap-1">
+                                <div className="flex flex-col items-center gap-0">
                                     <button
                                         onClick={handleForward}
                                         className="p-3 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-all active:scale-95"
@@ -508,8 +513,7 @@ export default function RaceReplay() {
                             </div>
 
                             {/* 슬라이더 */}
-                            {/* 🔥 [수정] w-full로 모바일에서 꽉 차게 설정 */}
-                            <div className="flex-1 w-full flex flex-col gap-2 min-w-[150px]">
+                            <div className="flex-1 w-full md:w-auto md:min-w-[200px] flex flex-col gap-2">
                                 <input
                                     type="range"
                                     min="0"
@@ -527,8 +531,8 @@ export default function RaceReplay() {
                                 </div>
                             </div>
 
-                            {/* 시간 표시 (PC에서만 보임 - 기존 유지) */}
-                            <div className="flex items-center gap-3 bg-black/60 px-4 py-2 rounded-xl border border-white/10 min-w-[120px] justify-center hidden sm:flex">
+                            {/* 시간 표시 (PC에서만 보임) */}
+                            <div className="hidden md:flex items-center gap-3 bg-black/60 px-4 py-2 rounded-xl border border-white/10 min-w-[120px] justify-center h-[56px]">
                                 {isConnected ? (
                                     <Wifi size={16} className="text-green-500" />
                                 ) : (
@@ -542,7 +546,7 @@ export default function RaceReplay() {
                                 </span>
                             </div>
                         </div>
-                    </div>
+                    </>
                 )}
             </div>
 
@@ -563,7 +567,7 @@ export default function RaceReplay() {
                                 className="w-full h-full p-12"
                                 preserveAspectRatio="xMidYMid meet"
                                 viewBox={`${mapBounds.minX} ${mapBounds.minY} ${mapBounds.maxX - mapBounds.minX} ${mapBounds.maxY - mapBounds.minY}`}
-                                transform="scale(1, -1)"
+                                style={{ transform: 'scale(1, -1)' }}
                             >
                                 {renderedTrack}
                                 {Object.values(raceData).map((car) => (
@@ -603,7 +607,7 @@ export default function RaceReplay() {
                 {/* 우측 리더보드 */}
                 <div className="lg:w-[400px] h-[600px] bg-[#151515] border border-white/10 rounded-3xl flex flex-col overflow-hidden">
                     <div className="p-5 bg-red-700 shadow-lg relative z-10 flex justify-between items-center">
-                        <span className="font-black text-white uppercase tracking-widest text-sm">Driving SPEED</span>
+                        <span className="font-black text-white uppercase tracking-widest text-sm">Driving speed</span>
                         <div className="flex items-center gap-2">
                             <div
                                 className={`w-2 h-2 rounded-full ${lastDataTime && new Date() - lastDataTime < 2000 ? 'bg-green-400 animate-pulse' : 'bg-gray-600'}`}
